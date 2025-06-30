@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+  <meta charset="UTF-8">
+  <title>TEDPIX Smart Chart (Final Clean Version)</title>
+  <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+  <style>
+    body {
+      margin: 0;
+      font-family: sans-serif;
+      background: #fff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+
+.chart-box {
+  width: 90%;
+  position: relative;
+  margin-bottom: 10px;
+}
+
+/* Specific chart sizes */
+#chart-ohlc.chart-box {
+  height: 700px;
+  /* width: 2300px; */
+}
+#chart-ghodrat.chart-box{
+  height: 75px;
+}
+#chart-buysell.chart-box,
+#chart-smart.chart-box {
+  height: 150px;
+}
+
+
+    .tooltip {
+      position: absolute;
+      background: rgba(255,255,255,0.95);
+      font-size: 12px;
+      padding: 4px 8px;
+      border: 1px solid #ccc;
+      pointer-events: none;
+      z-index: 10;
+      display: none;
+      white-space: nowrap;
+      left: 50%;
+      transform: translateX(-50%);
+      top: 8px;
+    }
+
+    .tooltip-date {
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="tooltip tooltip-date" id="tooltip-date"></div>
+  <div id="chart-ohlc" class="chart-box"><div class="tooltip" id="tooltip-price"></div></div>
+  <div id="chart-ghodrat" class="chart-box"><div class="tooltip" id="tooltip-ghodrat"></div></div>
+  <div id="chart-buysell" class="chart-box"><div class="tooltip" id="tooltip-buysell"></div></div>
+  <div id="chart-smart" class="chart-box"><div class="tooltip" id="tooltip-smart"></div></div>
+
+  <script>
+    fetch('tedpix_full_chart_data2.json')
+      .then(res => res.json())
+      .then(data => {
+        const dateMap = {};
+        data.forEach((d, i) => dateMap[i + 1] = d.time);
+
+        const baseOptions = {
+          layout: { background: { color: '#fff' }, textColor: '#000' },
+          rightPriceScale: { visible: false },
+          crosshair: {
+            mode: 1,
+            vertLine: { labelVisible: false },
+            horzLine: { labelVisible: true }
+          },
+          handleScroll: false,
+          handleScale: false,
+          timeScale: {
+            timeVisible: true,
+            tickMarkFormatter: (t) => dateMap[t] || '',
+            borderVisible: true,
+            visible: false
+          },
+          grid: { vertLines: { visible: false }, horzLines: { visible: true } }
+        };
+
+        // === Create charts ===
+        const chart1 = LightweightCharts.createChart(document.getElementById('chart-ohlc'), {
+          ...baseOptions,
+          // rightPriceScale: { visible: true },
+          timeScale: { ...baseOptions.timeScale, visible: false }
+        });
+        const chart2 = LightweightCharts.createChart(document.getElementById('chart-ghodrat'), baseOptions);
+        const chart3 = LightweightCharts.createChart(document.getElementById('chart-buysell'), baseOptions);
+        const chart4 = LightweightCharts.createChart(document.getElementById('chart-smart'), {
+          ...baseOptions,
+          timeScale: { ...baseOptions.timeScale, visible: true }
+        });
+
+        const allCharts = [chart1, chart2, chart3, chart4];
+
+        // === Add Series with no priceLine ===
+        const candle = chart1.addCandlestickSeries({
+          upColor: 'green', downColor: 'red',
+          borderUpColor: 'green', borderDownColor: 'red',
+          wickUpColor: 'green', wickDownColor: 'red',
+          priceLineVisible: false,
+          lastValueVisible: false
+        });
+        candle.setData(data.map((d, i) => ({
+          time: i + 1,
+          open: d.open,
+          high: d.high,
+          low: d.low,
+          close: d.close
+        })));
+
+        const ghodrat = chart2.addHistogramSeries({
+          priceLineVisible: false,
+          lastValueVisible: false
+        });
+        ghodrat.setData(data.map((d, i) => ({
+          time: i + 1,
+          value: d["قدرت خرید حقیقی"],
+          color: d["color"] === "green" ? "green" : "red"
+        })));
+
+        const buy = chart3.addHistogramSeries({
+          color: 'green',
+          priceLineVisible: false,
+          lastValueVisible: false
+        });
+        const sell = chart3.addHistogramSeries({
+          color: 'red',
+          priceLineVisible: false,
+          lastValueVisible: false
+        });
+        buy.setData(data.map((d, i) => ({ time: i + 1, value: d["ورود پول هوشمند"] })));
+        sell.setData(data.map((d, i) => ({ time: i + 1, value: -d["خروج پول هوشمند"] })));
+
+        const smart = chart4.addHistogramSeries({
+          priceLineVisible: false,
+          lastValueVisible: false
+        });
+        smart.setData(data.map((d, i) => ({
+          time: i + 1,
+          value: d["پول هوشمند"],
+          color: d["پول هوشمند"] >= 0 ? "green" : "red"
+        })));
+
+        // === Tooltips
+        const tooltips = {
+          date: document.getElementById('tooltip-date'),
+          chart1: document.getElementById('tooltip-price'),
+          chart2: document.getElementById('tooltip-ghodrat'),
+          chart3: document.getElementById('tooltip-buysell'),
+          chart4: document.getElementById('tooltip-smart')
+        };
+
+        function updateTooltips(param) {
+          if (!param?.time) {
+            Object.values(tooltips).forEach(t => t.style.display = 'none');
+            return;
+          }
+
+          const i = param.time - 1;
+          if (!data[i]) return;
+
+          const jalali = data[i].time;
+          tooltips.date.innerHTML = `📅 تاریخ: ${jalali}`;
+          tooltips.date.style.display = 'block';
+
+          tooltips.chart1.innerHTML = `قیمت پایانی: ${data[i].close.toLocaleString()}`;
+          tooltips.chart1.style.display = 'block';
+
+          tooltips.chart2.innerHTML = `قدرت خرید حقیقی: ${data[i]["قدرت خرید حقیقی"].toFixed(2)}`;
+          tooltips.chart2.style.display = 'block';
+
+          tooltips.chart3.innerHTML =
+            `ورود: ${data[i]["ورود پول هوشمند"].toLocaleString()}<br>خروج: ${data[i]["خروج پول هوشمند"].toLocaleString()}`;
+          tooltips.chart3.style.display = 'block';
+
+          tooltips.chart4.innerHTML = `پول هوشمند: ${data[i]["پول هوشمند"].toLocaleString()}`;
+          tooltips.chart4.style.display = 'block';
+        }
+
+        allCharts.forEach(chart => {
+          chart.subscribeCrosshairMove(updateTooltips);
+        });
+
+        // === Sync time range
+        const visibleRange = chart1.timeScale().getVisibleRange();
+        allCharts.forEach(c => c.timeScale().setVisibleRange(visibleRange));
+      });
+  </script>
+</body>
+</html>
