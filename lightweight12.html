@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+  <meta charset="utf-8">
+  <title>TradingView Chart – Jalali Dates + Toggles + Short Lines</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: sans-serif;
+    }
+    #controls {
+      padding: 10px 15px;
+      background: #f2f2f2;
+      border-bottom: 1px solid #ccc;
+      direction: rtl;
+    }
+    #controls label { margin-left: 20px; cursor: pointer; user-select: none; }
+    #chart { height: calc(100vh - 48px); }   /* leave room for toggle bar */
+  </style>
+</head>
+<body>
+  <!-- ── toggle bar ─────────────────────────────────────────────── -->
+  <div id="controls"></div>
+
+  <!-- ── chart container ────────────────────────────────────────── -->
+  <div id="chart"></div>
+
+  <!-- ── scripts ────────────────────────────────────────────────── -->
+  <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+  <script>
+    fetch('p2es_light/فخاس.json')
+      .then(r => r.json())
+      .then(data => {
+        /* ─────────── chart setup ─────────── */
+        const chart = LightweightCharts.createChart(document.getElementById('chart'), {
+          layout: {
+            background: { color: '#ffffff' },
+            textColor:   '#000',
+            fontSize:    14          // 📏 bigger text
+          },
+          rightPriceScale: { visible: true, borderVisible: true },
+          timeScale: {
+            borderVisible: true,
+            rightOffset:   5,
+            timeVisible:   true,
+            secondsVisible:false,
+            tickMarkFormatter: idx => dateMap[idx] || '',
+          },
+          grid: { vertLines: { visible: false }, horzLines: { visible: true } },
+          crosshair: {
+            mode: 0,
+            vertLine:{ labelVisible:false },
+            horzLine:{ labelVisible:true }
+          },
+        });
+
+        /* ─────────── colors & helpers ─────── */
+const colors = {
+  // 🔵 Primary indicators – rich and clear
+  'P/E':             '#1976D2',  // Rich Blue
+  'شاخص گروه P/E':   '#D32F2F',  // Bold Red
+  'شاخص کل P/E':     '#388E3C',  // Deep Green
+
+  // ✨ Averages – Gold/Bronze tones
+  'میانگین P/E':     '#FFC107',  // Amber / Gold
+  'چهار ساله P/E':   '#FFB300',  // Deeper Gold
+  'یک ساله P/E':     '#FFD54F',  // Light Gold / Champagne
+};
+
+
+        /* map numeric index => Jalali date text */
+        const dateMap = {};
+        data.forEach((d,i)=>{ dateMap[i+1]=d.time; });
+
+        const seriesMap = {};
+
+        /* ─────────── main visible lines ───── */
+        ['P/E','شاخص گروه P/E','شاخص کل P/E'].forEach(key=>{
+          const s = chart.addLineSeries({
+            color: colors[key], lineWidth:2,
+            priceLineVisible:true, lastValueVisible:true, title:key
+          });
+          s.setData(data.map((d,i)=>({time:i+1, value:d[key]})));
+          seriesMap[key]=s;
+        });
+
+        /* ─────────── میانگین P/E full-length (but NOT beyond data) ── */
+        {
+          const key    = 'میانگین P/E';
+          const value  = data[data.length-1][key];
+
+          const avgLine = chart.addLineSeries({
+            color: colors[key], lineWidth:4,
+            priceLineVisible:false,   // no full-width price-line
+            lastValueVisible:true,    // keep axis label
+            crossHairMarkerVisible:false
+          });
+          avgLine.setData([
+            {time:1,            value:value},
+            {time:data.length,  value:value}
+          ]);
+          /* title for legend / tooltip */
+          avgLine.applyOptions({title:key});
+        }
+
+        /* ─────────── 1-year & 4-year short segments ─────────────── */
+        const segments = {
+          'یک ساله P/E':   252,           // ≈ trading days
+          'چهار ساله P/E': 252*4
+        };
+
+        ['یک ساله P/E','چهار ساله P/E'].forEach(key=>{
+          const color     = colors[key];
+          const endIdx    = data.length;
+          const startIdx  = Math.max(1, endIdx - segments[key]);
+          const value     = data[endIdx-1][key];
+
+          /* short visible segment */
+          const seg = chart.addLineSeries({
+            color: color, lineWidth:4,
+            priceLineVisible:false, lastValueVisible:false,
+            crossHairMarkerVisible:false
+          });
+          seg.setData([{time:startIdx, value:value},{time:endIdx, value:value}]);
+
+          /* invisible point just to show axis label + legend */
+          const labelSeries = chart.addLineSeries({
+            color: color, lineWidth:0,
+            priceLineVisible:true, lastValueVisible:true,
+            crossHairMarkerVisible:false, title:key
+          });
+          labelSeries.setData([{time:endIdx, value:value}]);
+        });
+
+        /* ─────────── toggle check-boxes ───────────── */
+        const controls = document.getElementById('controls');
+        ['شاخص کل P/E','شاخص گروه P/E'].forEach(key=>{
+          const lbl = document.createElement('label');
+          const cb  = document.createElement('input');
+          cb.type='checkbox'; cb.checked=true;
+          cb.style.verticalAlign='middle';
+          cb.addEventListener('change', e=>{
+            seriesMap[key].applyOptions({visible:e.target.checked});
+          });
+          lbl.appendChild(cb);
+          lbl.appendChild(document.createTextNode(' '+key));
+          controls.appendChild(lbl);
+        });
+      })
+      .catch(err=>{
+        console.error(err);
+        document.getElementById('chart').innerHTML=
+          '<div style="padding:20px;color:red">Failed to load data.</div>';
+      });
+  </script>
+</body>
+</html>
